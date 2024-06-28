@@ -34,11 +34,7 @@ was easy to implement. So I implemented what I could/had time for.
 !pip install quote_chart
 ```
 
-But the lib code is just in one file quote_chart.py so you can just drop it into
-the same folder with your jupyter notebook and import via `from quote_chart
-import create_chart_app`.
-
-Once imported you need to create an instance of a Dash app by making a call to
+Once installed you need to create an instance of a Dash app by making a call to
 the function create_chart_app and pass it at least one parameter - the function
 that will create a plotly figure for currently visisble X range that is given by
 x0, x1 parameters. Here is the minimal working example:
@@ -56,6 +52,18 @@ def create_figure(x0, x1):
 app = create_chart_app(create_figure)
 app.run_server()
 ```
+
+## Usage without installation
+
+The lib code is just in one file quote_chart.py so you can just drop it
+into the same folder with your jupyter notebook and import via `from quote_chart
+import create_chart_app`. In this case though you will need to manually install
+dependencies:
+
+```
+!pip install dash plotly pandas 'numpy<2.0.0'
+```
+
 
 # Examples
 
