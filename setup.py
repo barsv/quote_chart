@@ -2,13 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     name='quote_chart',
-    version='0.1.0',
+    version='0.1.1',
     description='Customized dash/plotly chart for price candles.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
     author='Stan',
     author_email='barsvquotechart@gmail.com',
     url='https://github.com/barsv/quote_chart',
+    py_modules=['quote_chart'],
     packages=find_packages(),
     install_requires=[
         'dash',
