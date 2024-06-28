@@ -77,7 +77,7 @@ def create_chart_app(create_figure_func, on_period_change=None, period_buttons=N
         if debug:
             print(f"relayoutData: {relayoutData}")
         if relayoutData is None:
-            return dash.no_update
+            return relayout_store
         if relayout_store is None:
             relayout_store = {}
         no_updates = True
@@ -106,7 +106,7 @@ def create_chart_app(create_figure_func, on_period_change=None, period_buttons=N
         if no_updates:
             if debug:
                 print(f"no_updates")
-            return dash.no_update
+            return relayout_store
         if debug:
             print(f"relayout_store: {relayout_store}")
         return relayout_store
@@ -169,7 +169,7 @@ def create_chart_app(create_figure_func, on_period_change=None, period_buttons=N
                 console.log('loading client side script');
             }
 
-        // Convert date string to UTC
+            // Convert date string to UTC
             const convertToUTC = dateStr => dateStr.length === 10 ? `${dateStr}T00:00:00Z` : dateStr.split(' ').join('T') + 'Z';
             const convertToStr = date => date.toISOString().split('T').join(' ').replace('Z', '');
 
@@ -180,287 +180,304 @@ def create_chart_app(create_figure_func, on_period_change=None, period_buttons=N
                 setter.call(input, msg); // sets value of the hidden input.
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             };
-
-            const graphDiv = document.getElementById('basic-interactions').getElementsByClassName('js-plotly-plot')[0];
-            const hoverOutput = document.getElementById('hover-output');
-
-            let debounceTimeout;
-            let isScrolling = false;
-
-            if (!graphDiv) {
-                return;
-            }
-
-            graphDiv.onwheel = function(event) {
-                if (DEBUG) {
-                    console.log('onwheel started');
-                }
-                event.preventDefault();
-                // Set scrolling flag
-                if (!isScrolling){
-                    if (DEBUG) {
-                        console.log('notifying server: scrolling');
-                    }
-                    isScrolling = true;
-                    notifyServer('scrolling');
-                }
-
-                // Debounce: wait for 200ms after the last scroll event to reset the flag
-                clearTimeout(debounceTimeout);
-                debounceTimeout = setTimeout(() => {
-                    if (isScrolling) {
-                        if (DEBUG) {
-                            console.log('notifying server: no scrolling');
-                        }
-                        isScrolling = false;
-                        notifyServer('not scrolling');
-                    }
-                }, 200);
-
-                const zoomLevel = 0.9; // Zoom out 10%
-                const { xaxis, yaxis } = graphDiv.layout;
-
-                // Parse date strings to Date objects
-                const xrange = xaxis.range.map(x => new Date(Date.parse(convertToUTC(x))));
-                const yrange = yaxis.range;
-
-                // Calculate the zoom delta
-                const dx = (xrange[1] - xrange[0]) * (1 - zoomLevel) / 2;
-                const dy = (yrange[1] - yrange[0]) * (1 - zoomLevel) / 2;
-
-                // Determine zoom direction
-                const zoom = event.deltaY < 0 ? 1 : -1;
-
-                let newX0date, newX1date, newX0, newX1;
-                if (event.ctrlKey) {
-                    // Zoom around cursor position
-                    const cursorX = event.offsetX / graphDiv.clientWidth;
-                    const zoomDelta = (xrange[1] - xrange[0]) * (1 - zoomLevel);
-                    newX0date = new Date(xrange[0].getTime() + zoom * cursorX * zoomDelta);
-                    newX0 = convertToStr(newX0date);
-                    newX1date = new Date(xrange[1].getTime() - zoom * (1 - cursorX) * zoomDelta);
-                    newX1 = convertToStr(newX1date);
-                } else if (event.shiftKey) {
-                    // Horizontal scroll
-                    const scrollDelta = -1 * (xrange[1] - xrange[0]) * 0.05 * zoom;
-                    newX0date = new Date(xrange[0].getTime() + scrollDelta);
-                    newX0 = convertToStr(newX0date);
-                    newX1date = new Date(xrange[1].getTime() + scrollDelta);
-                    newX1 = convertToStr(newX1date);
-                } else {
-                    // Zoom with right edge fixed
-                    newX0date = new Date(xrange[0].getTime() + zoom * dx);
-                    newX0 = convertToStr(newX0date);
-                    newX1date = new Date(xrange[1].getTime());
-                    newX1 = xaxis.range[1];
-                }
-
-                // Compute new y range based on new x range
-                const firstPaneRanges = graphDiv.data.filter(d => d.yaxis === 'y');
-                const newYRanges = firstPaneRanges.map(trace => {
-                    const xValues = getXValues(trace);
-                    let yMin, yMax;
-                    if (trace.y) {
-                        const yValues = trace.y;
-                        const withinRange = yValues.filter((y, i) => xValues[i] >= newX0date && xValues[i] <= newX1date);
-                        yMax = Math.max(...withinRange);
-                        yMin = Math.min(...withinRange);
-                    }
-                    else {
-                        let yValues = trace.high;
-                        let withinRange = yValues.filter((y, i) => xValues[i] >= newX0date && xValues[i] <= newX1date);
-                        yMax = Math.max(...withinRange);
-                        yValues = trace.low;
-                        withinRange = yValues.filter((y, i) => xValues[i] >= newX0date && xValues[i] <= newX1date);
-                        yMin = Math.min(...withinRange);
-                    }
-                    const yPadding = (yMax - yMin) * 0.05; // 5%
-                    yMin = yMin - yPadding;
-                    yMax = yMax + yPadding;
-                    return [yMin, yMax];
-                });
-
-                const newY0 = Math.min(...newYRanges.map(range => range[0]));
-                const newY1 = Math.max(...newYRanges.map(range => range[1]));
-
-                // Apply new ranges
-                Plotly.relayout(graphDiv, {
-                    'xaxis.range[0]': newX0,
-                    'xaxis.range[1]': newX1,
-                    'yaxis.range[0]': newY0,
-                    'yaxis.range[1]': newY1,
-                });
-                if (DEBUG) {
-                    console.log('onwheel completed');
-                }
-            };
-
-            const bglayer = graphDiv.getElementsByClassName('bglayer')[0];
-            const firstPaneSvg = bglayer.getElementsByClassName('bg')[0];
-                
-            const xValuesMap = {};
-            const getXValues = (trace) => {
-                const key = `${trace.name}-${trace.yaxis}`;
-                const existingValue = xValuesMap[key];
-                if (existingValue) {
-                    return existingValue;
-                }
-                const xValues = trace.x.map(x => new Date(Date.parse(convertToUTC(x))));
-                xValuesMap[key] = xValues;
-                return xValues;
-            };
-
-            function findNearestIndex(xValues, xData) {
-                let left = 0;
-                let right = xValues.length - 1;
-
-                // Check corner cases.
-                if (xData <= xValues[left]) return left;
-                if (xData >= xValues[right]) return right;
-
-                while (left <= right) {
-                    let mid = Math.floor((left + right) / 2);
-
-                    if (xValues[mid] === xData) {
-                        return mid; // Exact match.
-                    } else if (xValues[mid] < xData) {
-                        left = mid + 1;
-                    } else {
-                        right = mid - 1;
-                    }
-                }
-
-                // After the loop, left will point to the first element that is greater than xData.
-                // Compare the distance between xData and neighbour points.
-                if (left === 0) return 0;
-                if (left === xValues.length) return xValues.length - 1;
-
-                const leftDiff = Math.abs(xValues[left - 1] - xData);
-                const rightDiff = Math.abs(xValues[left] - xData);
-
-                return leftDiff <= rightDiff ? left - 1 : left;
-            }
-
-            const updateCursorLines = () => {
-                // Get the plot's size and position.
-                const plotWidth = firstPaneSvg.width.baseVal.value;
-                const plotHeight = firstPaneSvg.height.baseVal.value;
-
-                // Calculate the corresponding data coordinates
-                const xRange = graphDiv.layout.xaxis.range.map(x => new Date(convertToUTC(x)));
-                const yRange = graphDiv.layout.yaxis.range;
-
-                const graphRect = graphDiv.getBoundingClientRect();
-                const bgRect = bglayer.getBoundingClientRect();
-                const left = bgRect.x - graphRect.x;
-                const top = bgRect.y - graphRect.y;
-                const relativeX = window.mouseX - left;
-                const relativeY = window.mouseY - top;
-
-                const xData = new Date(xRange[0].getTime() + (relativeX / plotWidth) * (xRange[1] - xRange[0]));
-                const yData = yRange[0] + ((plotHeight - relativeY) / plotHeight) * (yRange[1] - yRange[0]);
-
-                // find OHLC trace
-                const ohlc = graphDiv.data.find(trace => trace.high);
-                // find Volume trace
-                const volume = graphDiv.data.find(trace => trace.name === 'Volume');
-
-                let xValues = getXValues(ohlc);
-                let index = findNearestIndex(xValues, xData);
-                if (index === -1) {
-                    return;
-                }
-                let output = '<div>'
-                    + `${convertToStr(xData)}`
-                    + ` O${ohlc.open[index]} H${ohlc.high[index]}`
-                    + ` L${ohlc.low[index]} C${ohlc.close[index]}`
-                    + ` V${volume.y[index]}`;
-                if (DEBUG) {
-                    output += `<br>xData${xData.toISOString()} yData${yData}<br>`
-                        + `mX${window.mouseX} mY${window.mouseY}<br>`
-                        + `relativeX${relativeX} relativeY${relativeY} <br>`
-                        + `xRange[0]${xRange[0].toISOString()} xRange[1]${xRange[1].toISOString()}<br>`
-                        + `w${plotWidth} h${plotHeight}<br>`;
-                }
-                output += '</div>';
-
-                // Add info from other non ohlc/volume traces.
-                graphDiv.data.forEach(trace => {
-                    if (!(trace.high && trace.low && trace.open && trace.close) && trace.name !== 'Volume') {
-                        xValues = getXValues(ohlc);
-                        index = findNearestIndex(xValues, xData);
-                        if (index === -1) {
-                            return;
-                        }
-                        output += `<div>${trace.name || ''}: ${trace.y[index]}</div>`;
-                    }
-                });
-
-                // Update the hover-output div
-                const style = `
-                    width: 0;
-                    font-family: 'Open Sans', verdana, arial, sans-serif; 
-                    font-size: 12px; 
-                    fill: rgb(42, 63, 95);
-                    fill-opacity: 1;
-                    font-weight: normal;
-                    font-style: normal; 
-                    font-variant: normal;
-                    white-space: pre;
-                `;
-                hoverOutput.innerHTML = `<div style="${style}">${output}</div>`;
-
-                // Add cursor lines
-                window.cursorLines = [
-                    {
-                        type: 'line',
-                        x0: xData.toISOString(), y0: 0, x1: xData.toISOString(), y1: 1,
-                        line: { color: 'black', width: 1, dash: 'dot' },
-                        xref: 'x', yref: 'paper'
-                    },
-                    {
-                        type: 'line',
-                        x0: convertToStr(xRange[0]), y0: yData, x1: convertToStr(xRange[1]), y1: yData,
-                        line: { color: 'black', width: 1, dash: 'dot' },
-                        xref: 'x', yref: 'y'
-                    }
-                ];
-            };
-
-            graphDiv.onmousemove = function(event) {
-                if (DEBUG) {
-                    console.log('onmousemove started');
-                }
-                
-                if (isScrolling) {
-                    //return;
-                }
-
-                if (window.mouseX === event.offsetX && window.mouseY === event.offsetY) {
-                    return;
-                }
-
-                // Get the cursor position in pixels
-                window.mouseX = event.offsetX;
-                window.mouseY = event.offsetY;
-
-                updateCursorLines();
-
-                // note: Plotly.update is better than Plotly.relayout because update doesn't send relayout event to the server.
-                Plotly.update(graphDiv, {}, {
-                    shapes: window.cursorLines
-                });
-                if (DEBUG) {
-                    console.log('onmousemove completed');
-                }
-            };
-
-            if (window.cursorLines) {
-                Plotly.update(graphDiv, {}, {
-                    shapes: window.cursorLines
-                });
-            }
             
+            const waitForElement = (selector, callback, interval = 50, maxAttempts = 100) => {
+                let attempts = 0;
+                const intervalId = setInterval(() => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        clearInterval(intervalId);
+                        callback(element);
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(intervalId);
+                        console.error(`Element with selector "${selector}" not found within the timeout period.`);
+                    }
+                    attempts++;
+                }, interval);
+            };
+            
+            waitForElement('#basic-interactions .js-plotly-plot', (graphDiv) => {
+                const hoverOutput = document.getElementById('hover-output');
+
+                let debounceTimeout;
+                let isScrolling = false;
+
+                if (!graphDiv) {
+                    console.error('chart div not found!');
+                    return;
+                }
+
+                graphDiv.onwheel = function(event) {
+                    if (DEBUG) {
+                        console.log('onwheel started');
+                    }
+                    event.preventDefault();
+                    // Set scrolling flag
+                    if (!isScrolling){
+                        if (DEBUG) {
+                            console.log('notifying server: scrolling');
+                        }
+                        isScrolling = true;
+                        notifyServer('scrolling');
+                    }
+
+                    // Debounce: wait for 200ms after the last scroll event to reset the flag
+                    clearTimeout(debounceTimeout);
+                    debounceTimeout = setTimeout(() => {
+                        if (isScrolling) {
+                            if (DEBUG) {
+                                console.log('notifying server: no scrolling');
+                            }
+                            isScrolling = false;
+                            notifyServer('not scrolling');
+                        }
+                    }, 200);
+
+                    const zoomLevel = 0.9; // Zoom out 10%
+                    const { xaxis, yaxis } = graphDiv.layout;
+
+                    // Parse date strings to Date objects
+                    const xrange = xaxis.range.map(x => new Date(Date.parse(convertToUTC(x))));
+                    const yrange = yaxis.range;
+
+                    // Calculate the zoom delta
+                    const dx = (xrange[1] - xrange[0]) * (1 - zoomLevel) / 2;
+                    const dy = (yrange[1] - yrange[0]) * (1 - zoomLevel) / 2;
+
+                    // Determine zoom direction
+                    const zoom = event.deltaY < 0 ? 1 : -1;
+
+                    let newX0date, newX1date, newX0, newX1;
+                    if (event.ctrlKey) {
+                        // Zoom around cursor position
+                        const cursorX = event.offsetX / graphDiv.clientWidth;
+                        const zoomDelta = (xrange[1] - xrange[0]) * (1 - zoomLevel);
+                        newX0date = new Date(xrange[0].getTime() + zoom * cursorX * zoomDelta);
+                        newX0 = convertToStr(newX0date);
+                        newX1date = new Date(xrange[1].getTime() - zoom * (1 - cursorX) * zoomDelta);
+                        newX1 = convertToStr(newX1date);
+                    } else if (event.shiftKey) {
+                        // Horizontal scroll
+                        const scrollDelta = -1 * (xrange[1] - xrange[0]) * 0.05 * zoom;
+                        newX0date = new Date(xrange[0].getTime() + scrollDelta);
+                        newX0 = convertToStr(newX0date);
+                        newX1date = new Date(xrange[1].getTime() + scrollDelta);
+                        newX1 = convertToStr(newX1date);
+                    } else {
+                        // Zoom with right edge fixed
+                        newX0date = new Date(xrange[0].getTime() + zoom * dx);
+                        newX0 = convertToStr(newX0date);
+                        newX1date = new Date(xrange[1].getTime());
+                        newX1 = xaxis.range[1];
+                    }
+
+                    // Compute new y range based on new x range
+                    const firstPaneRanges = graphDiv.data.filter(d => d.yaxis === 'y');
+                    const newYRanges = firstPaneRanges.map(trace => {
+                        const xValues = getXValues(trace);
+                        let yMin, yMax;
+                        if (trace.y) {
+                            const yValues = trace.y;
+                            const withinRange = yValues.filter((y, i) => xValues[i] >= newX0date && xValues[i] <= newX1date);
+                            yMax = Math.max(...withinRange);
+                            yMin = Math.min(...withinRange);
+                        }
+                        else {
+                            let yValues = trace.high;
+                            let withinRange = yValues.filter((y, i) => xValues[i] >= newX0date && xValues[i] <= newX1date);
+                            yMax = Math.max(...withinRange);
+                            yValues = trace.low;
+                            withinRange = yValues.filter((y, i) => xValues[i] >= newX0date && xValues[i] <= newX1date);
+                            yMin = Math.min(...withinRange);
+                        }
+                        const yPadding = (yMax - yMin) * 0.05; // 5%
+                        yMin = yMin - yPadding;
+                        yMax = yMax + yPadding;
+                        return [yMin, yMax];
+                    });
+
+                    const newY0 = Math.min(...newYRanges.map(range => range[0]));
+                    const newY1 = Math.max(...newYRanges.map(range => range[1]));
+
+                    // Apply new ranges
+                    Plotly.relayout(graphDiv, {
+                        'xaxis.range[0]': newX0,
+                        'xaxis.range[1]': newX1,
+                        'yaxis.range[0]': newY0,
+                        'yaxis.range[1]': newY1,
+                    });
+                    if (DEBUG) {
+                        console.log('onwheel completed');
+                    }
+                };
+
+                const bglayer = graphDiv.getElementsByClassName('bglayer')[0];
+                const firstPaneSvg = bglayer.getElementsByClassName('bg')[0];
+                    
+                const xValuesMap = {};
+                const getXValues = (trace) => {
+                    const key = `${trace.name}-${trace.yaxis}`;
+                    const existingValue = xValuesMap[key];
+                    if (existingValue) {
+                        return existingValue;
+                    }
+                    const xValues = trace.x.map(x => new Date(Date.parse(convertToUTC(x))));
+                    xValuesMap[key] = xValues;
+                    return xValues;
+                };
+
+                function findNearestIndex(xValues, xData) {
+                    let left = 0;
+                    let right = xValues.length - 1;
+
+                    // Check corner cases.
+                    if (xData <= xValues[left]) return left;
+                    if (xData >= xValues[right]) return right;
+
+                    while (left <= right) {
+                        let mid = Math.floor((left + right) / 2);
+
+                        if (xValues[mid] === xData) {
+                            return mid; // Exact match.
+                        } else if (xValues[mid] < xData) {
+                            left = mid + 1;
+                        } else {
+                            right = mid - 1;
+                        }
+                    }
+
+                    // After the loop, left will point to the first element that is greater than xData.
+                    // Compare the distance between xData and neighbour points.
+                    if (left === 0) return 0;
+                    if (left === xValues.length) return xValues.length - 1;
+
+                    const leftDiff = Math.abs(xValues[left - 1] - xData);
+                    const rightDiff = Math.abs(xValues[left] - xData);
+
+                    return leftDiff <= rightDiff ? left - 1 : left;
+                }
+
+                const updateCursorLines = () => {
+                    // Get the plot's size and position.
+                    const plotWidth = firstPaneSvg.width.baseVal.value;
+                    const plotHeight = firstPaneSvg.height.baseVal.value;
+
+                    // Calculate the corresponding data coordinates
+                    const xRange = graphDiv.layout.xaxis.range.map(x => new Date(convertToUTC(x)));
+                    const yRange = graphDiv.layout.yaxis.range;
+
+                    const graphRect = graphDiv.getBoundingClientRect();
+                    const bgRect = bglayer.getBoundingClientRect();
+                    const left = bgRect.x - graphRect.x;
+                    const top = bgRect.y - graphRect.y;
+                    const relativeX = window.mouseX - left;
+                    const relativeY = window.mouseY - top;
+
+                    const xData = new Date(xRange[0].getTime() + (relativeX / plotWidth) * (xRange[1] - xRange[0]));
+                    const yData = yRange[0] + ((plotHeight - relativeY) / plotHeight) * (yRange[1] - yRange[0]);
+
+                    // find OHLC trace
+                    const ohlc = graphDiv.data.find(trace => trace.high);
+                    // find Volume trace
+                    const volume = graphDiv.data.find(trace => trace.name === 'Volume');
+
+                    let xValues = getXValues(ohlc);
+                    let index = findNearestIndex(xValues, xData);
+                    if (index === -1) {
+                        return;
+                    }
+                    let output = '<div>'
+                        + `${convertToStr(xData)}`
+                        + ` O${ohlc.open[index]} H${ohlc.high[index]}`
+                        + ` L${ohlc.low[index]} C${ohlc.close[index]}`
+                        + ` V${volume.y[index]}`;
+                    if (DEBUG) {
+                        output += `<br>xData${xData.toISOString()} yData${yData}<br>`
+                            + `mX${window.mouseX} mY${window.mouseY}<br>`
+                            + `relativeX${relativeX} relativeY${relativeY} <br>`
+                            + `xRange[0]${xRange[0].toISOString()} xRange[1]${xRange[1].toISOString()}<br>`
+                            + `w${plotWidth} h${plotHeight}<br>`;
+                    }
+                    output += '</div>';
+
+                    // Add info from other non ohlc/volume traces.
+                    graphDiv.data.forEach(trace => {
+                        if (!(trace.high && trace.low && trace.open && trace.close) && trace.name !== 'Volume') {
+                            xValues = getXValues(ohlc);
+                            index = findNearestIndex(xValues, xData);
+                            if (index === -1) {
+                                return;
+                            }
+                            output += `<div>${trace.name || ''}: ${trace.y[index]}</div>`;
+                        }
+                    });
+
+                    // Update the hover-output div
+                    const style = `
+                        width: 0;
+                        font-family: 'Open Sans', verdana, arial, sans-serif; 
+                        font-size: 12px; 
+                        fill: rgb(42, 63, 95);
+                        fill-opacity: 1;
+                        font-weight: normal;
+                        font-style: normal; 
+                        font-variant: normal;
+                        white-space: pre;
+                    `;
+                    hoverOutput.innerHTML = `<div style="${style}">${output}</div>`;
+
+                    // Add cursor lines
+                    window.cursorLines = [
+                        {
+                            type: 'line',
+                            x0: xData.toISOString(), y0: 0, x1: xData.toISOString(), y1: 1,
+                            line: { color: 'black', width: 1, dash: 'dot' },
+                            xref: 'x', yref: 'paper'
+                        },
+                        {
+                            type: 'line',
+                            x0: convertToStr(xRange[0]), y0: yData, x1: convertToStr(xRange[1]), y1: yData,
+                            line: { color: 'black', width: 1, dash: 'dot' },
+                            xref: 'x', yref: 'y'
+                        }
+                    ];
+                };
+
+                graphDiv.onmousemove = function(event) {
+                    if (DEBUG) {
+                        console.log('onmousemove started');
+                    }
+                    
+                    if (isScrolling) {
+                        //return;
+                    }
+
+                    if (window.mouseX === event.offsetX && window.mouseY === event.offsetY) {
+                        return;
+                    }
+
+                    // Get the cursor position in pixels
+                    window.mouseX = event.offsetX;
+                    window.mouseY = event.offsetY;
+
+                    updateCursorLines();
+
+                    // note: Plotly.update is better than Plotly.relayout because update doesn't send relayout event to the server.
+                    Plotly.update(graphDiv, {}, {
+                        shapes: window.cursorLines
+                    });
+                    if (DEBUG) {
+                        console.log('onmousemove completed');
+                    }
+                };
+
+                if (window.cursorLines) {
+                    Plotly.update(graphDiv, {}, {
+                        shapes: window.cursorLines
+                    });
+                }
+            });
+
             if (DEBUG) {
                 console.log('script loading completed');
             }

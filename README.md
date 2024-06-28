@@ -30,24 +30,28 @@ was easy to implement. So I implemented what I could/had time for.
 
 # Installation
 
-I actually recommend to just drop the file quote_chart.py into the same folder
-with jupyter notebook and import via `from quote_chart import create_chart_app`.
+```
+!pip install quote_chart
+```
 
-But I will try to add it to PyPi.
+But the lib code is just in one file quote_chart.py so you can just drop it into
+the same folder with your jupyter notebook and import via `from quote_chart
+import create_chart_app`.
 
-Once imported you need to create an example of Dash app by making a call to the
-function create_chart_app and pass it at least one parameter - the function that
-will create a plotly figure for currently visisble X range that is given by x0,
-x1 parameters. Here is the minimal working example:
+Once imported you need to create an instance of a Dash app by making a call to
+the function create_chart_app and pass it at least one parameter - the function
+that will create a plotly figure for currently visisble X range that is given by
+x0, x1 parameters. Here is the minimal working example:
 
 ```
 from quote_chart import create_chart_app
 import plotly.express as px
 
 def create_figure(x0, x1):
-    df = px.data.stocks()
-    df.set_index('date', inplace=True)
-    return px.line(df['GOOG'])
+    df = px.data.stocks() # sample data in plotly.express.
+    # without index by date it will not put dates on the x axis.
+    df.set_index('date', inplace=True) 
+    return px.line(df['GOOG']) # plot GOOG dummy price as a line.
 
 app = create_chart_app(create_figure)
 app.run_server()
