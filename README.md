@@ -1,4 +1,4 @@
-# Live example
+# Live demo
 
 https://colab.research.google.com/drive/1GQ5Vuf07_8WYIYhDSsZxZc4f7fWaZPFP
 
